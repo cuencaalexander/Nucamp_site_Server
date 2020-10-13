@@ -38,11 +38,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 // app.use(cookieParser('12345-67890'));//Sign the cookie that is sent from the server to the client|Conflict btw cookieP and ExpressS, which has its own cookies
 //After the client has sent authentication credentials then we'll send to the client a cookie and well set it up here so the client can use that cookie instead to gain access
-app.use(session({//this session middleware will automatically add a prop called SESSION to the REQ message
+app.use(session({//this session middleware will automatically add a prop called SESSION to the REQ mesasage
   name: 'session-id',
   secret: '12345-67890',
-  saveUninitialized: false,//If no change is made to the session, then at end of req it wont get saved due to being an empty session, also no cookie will be sent to client
-  resave: false,//once session has been created, updated and saved it'll continue to be resaved whenever a req is made for that session, even if no updates in req. This keeps session active, so it doesnt get deleted
+  saveUninitialized: false,//If no change is made to the session, then at end of req it wont get saved due to benig an empty session, also no cookie will be sent to client
+  resave: false,//once session has been created, updated and saved itll continue to be resaved whenever a req is made for that session, even if no updates in req. Thirs keeps session active, so it doesnt get deleted
   store: new FileStore()//save info to hard disk instead of the running app memory
 }))
 
@@ -54,15 +54,32 @@ app.use('/users', usersRouter);
 function auth(req, res, next) {
   console.log(req.session)
   // console.log(req.headers);
-  if (!req.session.user) {
-    // const authHeader = req.headers.authorization; Now handled by through the user router
-    // if (!authHeader) {
+  if (!req.session.user) {//req.signedCookie prop is provided by cookieParser, it will automatically parse a signed cookie from the req
+    //if the cookie is not properly signed it will retunr False, we will add USER to the cookie. F is parsed as F the signedCookies prop
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
       const err = new Error('You are not authenticated!');
-      // res.setHeader('WWW-Authenticate', 'Basic');No need to reAuthenticate?
+      res.setHeader('WWW-Authenticate', 'Basic');
       err.status = 401;
       return next(err);
+    }//authHeader returns the encoded res "Basic YDKSNDNSKL...", the second part is ENCODED in base64 string. First we decode the 2nd part of this String by using ", base64" into a string of utf8?.
+    //THen we get a string admin:pass...
+    const auth = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+    const user = auth[0];
+    const pass = auth[1];
+    if (user === 'admin' && pass === 'password') {
+      //Creating the Cookie and setting it up in the server's res to the client
+      //res.cookie('user', 'admin', { signed: true });//(name of the cookie, value to store in the name prop,optional: congif values. We let Express know to use the secrete keyfrom cookieParser to create a signed cookie)
+      req.session.user = 'admin';
+      return next(); //authorized
+    } else {
+      const err = new Error('You are not authenticated!!');
+      res.setHeader('WWW-Authenticate', 'Basic');
+      err.status = 401;
+      return next(err);
+    }
   } else {
-    if (req.session.user === 'authenticated') {
+    if (req.session.user === 'admin') {
       return next();//Grant ACCESS
     } else {
       const err = new Error('You are not authenticated!!');
@@ -74,8 +91,8 @@ function auth(req, res, next) {
 }
 
 app.use(auth);
-//Now that we have a way to have users register we want them to be able to access the USERS router before they get challenged to authenticate. So if they have no accout they can create ONE and ask for the indexRouter
-app.use(express.static(path.join(__dirname, 'public')));//1st middleware function where we send smt to the client, USED to be now it's usersRouter?
+//NOw that we have a way to have users register we want them to be able to access the USERS router before they get challnged to authenitcate. So if they have no accout they can create ONEand ask for the indexRouter
+app.use(express.static(path.join(__dirname, 'public')));//1st middleware function where we send smt to the client
 app.use('/campsites', campsiteRouter);
 app.use('/promotions', promotionRouter);
 app.use('/partners', partnerRouter);
